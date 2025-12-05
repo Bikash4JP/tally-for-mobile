@@ -36,6 +36,29 @@ type BsRow = {
   amount: number;
 };
 
+type CashFlowLedgerRow = {
+  ledgerId: string;
+  name: string;
+  inflow: number;
+  outflow: number;
+};
+
+type CashFlowSummary = {
+  perLedger: CashFlowLedgerRow[];
+  totalIn: number;
+  totalOut: number;
+  net: number;
+};
+
+type LedgerAnalysisRow = {
+  ledgerId: string;
+  name: string;
+  groupName: string;
+  turnover: number;
+  closing: number;
+  closingType: 'Dr' | 'Cr' | '';
+};
+
 function parseDateSafe(dateStr: string): Date | null {
   if (!dateStr) return null;
   const normalized = dateStr.replace(/\./g, '-').replace(/\//g, '-');
@@ -66,7 +89,7 @@ export default function ReportsScreen() {
   const filteredTransactions: Transaction[] = useMemo(() => {
     if (mode === 'overall') return transactions;
 
-    return transactions.filter((t) => {
+    return transactions.filter((t: Transaction) => {
       const d = parseDateSafe(t.date);
       if (!d) return false;
 
@@ -84,12 +107,13 @@ export default function ReportsScreen() {
 
   const ledgerMap = useMemo(() => {
     const map: Record<string, Ledger> = {};
-    ledgers.forEach((l) => {
+    ledgers.forEach((l: Ledger) => {
       map[l.id] = l;
     });
     return map;
   }, [ledgers]);
 
+  // ========== TRIAL BALANCE ==========
   const trialRows: TrialRow[] = useMemo(() => {
     const rows: TrialRow[] = ledgers.map((ledger: Ledger) => {
       let debitTotal = 0;
@@ -124,6 +148,7 @@ export default function ReportsScreen() {
     [trialRows],
   );
 
+  // ========== PROFIT & LOSS ==========
   const {
     expenseRows,
     incomeRows,
@@ -142,7 +167,7 @@ export default function ReportsScreen() {
     const expenses: PlRow[] = [];
     const incomes: PlRow[] = [];
 
-    trialRows.forEach((row) => {
+    trialRows.forEach((row: TrialRow) => {
       const ledger = ledgerMap[row.ledgerId];
       if (!ledger) return;
 
@@ -181,66 +206,186 @@ export default function ReportsScreen() {
     };
   }, [trialRows, ledgerMap]);
 
-  const { assetRows, liabilityRows, totalAssets, totalLiabilities } = useMemo(
-    () => {
-      const assets: BsRow[] = [];
-      const liabilities: BsRow[] = [];
+  // ========== BALANCE SHEET ==========
+  const {
+    assetRows,
+    liabilityRows,
+    totalAssets,
+    totalLiabilities,
+  }: {
+    assetRows: BsRow[];
+    liabilityRows: BsRow[];
+    totalAssets: number;
+    totalLiabilities: number;
+  } = useMemo(() => {
+    const assets: BsRow[] = [];
+    const liabilities: BsRow[] = [];
 
-      trialRows.forEach((row) => {
-        const ledger = ledgerMap[row.ledgerId];
-        if (!ledger) return;
+    trialRows.forEach((row: TrialRow) => {
+      const ledger = ledgerMap[row.ledgerId];
+      if (!ledger) return;
 
-        let balance = 0;
+      let balance = 0;
 
-        if (ledger.nature === 'Asset' || ledger.nature === 'Expense') {
-          balance = row.debit - row.credit;
-        } else if (ledger.nature === 'Liability' || ledger.nature === 'Income') {
-          balance = row.credit - row.debit;
-        }
-
-        if (balance <= 0) return;
-
-        if (ledger.nature === 'Asset') {
-          assets.push({
-            ledgerId: row.ledgerId,
-            name: ledger.name,
-            amount: balance,
-          });
-        } else if (ledger.nature === 'Liability') {
-          liabilities.push({
-            ledgerId: row.ledgerId,
-            name: ledger.name,
-            amount: balance,
-          });
-        }
-      });
-
-      if (netProfit > 0) {
-        liabilities.push({
-          ledgerId: 'PL_PROFIT',
-          name: 'Net Profit (from P&L)',
-          amount: netProfit,
-        });
-      } else if (netLoss > 0) {
-        assets.push({
-          ledgerId: 'PL_LOSS',
-          name: 'Net Loss (from P&L)',
-          amount: netLoss,
-        });
+      if (ledger.nature === 'Asset' || ledger.nature === 'Expense') {
+        balance = row.debit - row.credit;
+      } else if (ledger.nature === 'Liability' || ledger.nature === 'Income') {
+        balance = row.credit - row.debit;
       }
 
-      const totalA = assets.reduce((s, r) => s + r.amount, 0);
-      const totalL = liabilities.reduce((s, r) => s + r.amount, 0);
+      if (balance <= 0) return;
 
+      if (ledger.nature === 'Asset') {
+        assets.push({
+          ledgerId: row.ledgerId,
+          name: ledger.name,
+          amount: balance,
+        });
+      } else if (ledger.nature === 'Liability') {
+        liabilities.push({
+          ledgerId: row.ledgerId,
+          name: ledger.name,
+          amount: balance,
+        });
+      }
+    });
+
+    if (netProfit > 0) {
+      liabilities.push({
+        ledgerId: 'PL_PROFIT',
+        name: 'Net Profit (from P&L)',
+        amount: netProfit,
+      });
+    } else if (netLoss > 0) {
+      assets.push({
+        ledgerId: 'PL_LOSS',
+        name: 'Net Loss (from P&L)',
+        amount: netLoss,
+      });
+    }
+
+    const totalA = assets.reduce((s, r) => s + r.amount, 0);
+    const totalL = liabilities.reduce((s, r) => s + r.amount, 0);
+
+    return {
+      assetRows: assets,
+      liabilityRows: liabilities,
+      totalAssets: totalA,
+      totalLiabilities: totalL,
+    };
+  }, [trialRows, ledgerMap, netProfit, netLoss]);
+
+  // ========== CASH FLOW (CASH / BANK MOVEMENT) ==========
+  const cashFlow: CashFlowSummary = useMemo(() => {
+    const allLedgers: Ledger[] = Object.values(ledgerMap);
+    // simple heuristic: ledger name me "cash" ya "bank"
+    const cashLedgerIds: string[] = allLedgers
+      .filter((l: Ledger) => /cash|bank/i.test(l.name))
+      .map((l) => l.id);
+
+    if (cashLedgerIds.length === 0) {
       return {
-        assetRows: assets,
-        liabilityRows: liabilities,
-        totalAssets: totalA,
-        totalLiabilities: totalL,
+        perLedger: [],
+        totalIn: 0,
+        totalOut: 0,
+        net: 0,
       };
-    },
-    [trialRows, ledgerMap, netProfit, netLoss],
-  );
+    }
+
+    const perMap: Record<string, CashFlowLedgerRow> = {};
+
+    const ensureRow = (ledgerId: string): CashFlowLedgerRow => {
+      const ledger = ledgerMap[ledgerId];
+      if (!ledger) {
+        return {
+          ledgerId,
+          name: ledgerId,
+          inflow: 0,
+          outflow: 0,
+        };
+      }
+      if (!perMap[ledgerId]) {
+        perMap[ledgerId] = {
+          ledgerId,
+          name: ledger.name,
+          inflow: 0,
+          outflow: 0,
+        };
+      }
+      return perMap[ledgerId];
+    };
+
+    filteredTransactions.forEach((t: Transaction) => {
+      if (cashLedgerIds.includes(t.debitLedgerId)) {
+        const row = ensureRow(t.debitLedgerId);
+        row.inflow += t.amount;
+      }
+      if (cashLedgerIds.includes(t.creditLedgerId)) {
+        const row = ensureRow(t.creditLedgerId);
+        row.outflow += t.amount;
+      }
+    });
+
+    const perLedger = Object.values(perMap).filter(
+      (r: CashFlowLedgerRow) => r.inflow > 0 || r.outflow > 0,
+    );
+
+    const totalIn = perLedger.reduce((s, r) => s + r.inflow, 0);
+    const totalOut = perLedger.reduce((s, r) => s + r.outflow, 0);
+    const net = totalIn - totalOut;
+
+    return {
+      perLedger,
+      totalIn,
+      totalOut,
+      net,
+    };
+  }, [filteredTransactions, ledgerMap]);
+
+  // ========== LEDGER ANALYSIS (TURNOVER + CLOSING) ==========
+  const ledgerAnalysis: LedgerAnalysisRow[] = useMemo(() => {
+    const rows: LedgerAnalysisRow[] = trialRows
+      .map((row: TrialRow) => {
+        const ledger = ledgerMap[row.ledgerId];
+        if (!ledger) return null;
+
+        const turnover = row.debit + row.credit;
+        if (turnover === 0) return null;
+
+        let closing = 0;
+        let closingType: 'Dr' | 'Cr' | '' = '';
+
+        if (ledger.nature === 'Asset' || ledger.nature === 'Expense') {
+          closing = row.debit - row.credit;
+          if (closing > 0) closingType = 'Dr';
+          else if (closing < 0) {
+            closingType = 'Cr';
+            closing = Math.abs(closing);
+          }
+        } else if (ledger.nature === 'Liability' || ledger.nature === 'Income') {
+          closing = row.credit - row.debit;
+          if (closing > 0) closingType = 'Cr';
+          else if (closing < 0) {
+            closingType = 'Dr';
+            closing = Math.abs(closing);
+          }
+        }
+
+        return {
+          ledgerId: row.ledgerId,
+          name: ledger.name,
+          groupName: ledger.groupName,
+          turnover,
+          closing,
+          closingType,
+        };
+      })
+      .filter((r): r is LedgerAnalysisRow => r !== null);
+
+    // Top 10 by turnover for quick analysis
+    rows.sort((a, b) => b.turnover - a.turnover);
+    return rows.slice(0, 10);
+  }, [trialRows, ledgerMap]);
 
   const renderModeTag = (value: ReportMode, label: string) => {
     const selected = mode === value;
@@ -266,7 +411,7 @@ export default function ReportsScreen() {
         <View>
           <Text style={styles.title}>Reports</Text>
           <Text style={styles.subtitle}>
-            Trial balance, Profit &amp; Loss and Balance Sheet ({periodLabel}).
+            Trial balance, Profit &amp; Loss, Balance Sheet, Cash Flow &amp; Ledger Summary ({periodLabel}).
           </Text>
         </View>
       </View>
@@ -278,7 +423,7 @@ export default function ReportsScreen() {
       </View>
 
       {/* TRIAL BALANCE */}
-      <View style={styles.section}>
+      <View className="tb-section" style={styles.section}>
         <Text style={styles.sectionTitle}>Trial Balance</Text>
         <Text style={styles.sectionHint}>{periodLabel}</Text>
 
@@ -358,7 +503,7 @@ export default function ReportsScreen() {
           <View style={styles.plColumnsRow}>
             <View style={styles.plColumn}>
               <Text style={styles.plColumnTitle}>Expenses (Dr)</Text>
-              {expenseRows.map((row) => (
+              {expenseRows.map((row: PlRow) => (
                 <View key={row.ledgerId} style={styles.plRow}>
                   <Text style={styles.plName}>{row.name}</Text>
                   <Text style={styles.plAmountRight}>
@@ -390,7 +535,7 @@ export default function ReportsScreen() {
 
             <View style={styles.plColumn}>
               <Text style={styles.plColumnTitle}>Incomes (Cr)</Text>
-              {incomeRows.map((row) => (
+              {incomeRows.map((row: PlRow) => (
                 <View key={row.ledgerId} style={styles.plRow}>
                   <Text style={styles.plName}>{row.name}</Text>
                   <Text style={styles.plAmountRight}>
@@ -436,7 +581,7 @@ export default function ReportsScreen() {
           <View style={styles.bsColumnsRow}>
             <View style={styles.bsColumn}>
               <Text style={styles.bsColumnTitle}>Liabilities</Text>
-              {liabilityRows.map((row) => (
+              {liabilityRows.map((row: BsRow) => (
                 <View key={row.ledgerId} style={styles.bsRow}>
                   <Text style={styles.bsName}>{row.name}</Text>
                   <Text style={styles.bsAmountRight}>
@@ -458,7 +603,7 @@ export default function ReportsScreen() {
 
             <View style={styles.bsColumn}>
               <Text style={styles.bsColumnTitle}>Assets</Text>
-              {assetRows.map((row) => (
+              {assetRows.map((row: BsRow) => (
                 <View key={row.ledgerId} style={styles.bsRow}>
                   <Text style={styles.bsName}>{row.name}</Text>
                   <Text style={styles.bsAmountRight}>
@@ -481,32 +626,171 @@ export default function ReportsScreen() {
         )}
       </View>
 
-      {/* Planned / future reports section – visual same as before */}
+      {/* CASH FLOW (FUNCTIONAL) */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Cash Flow (Cash &amp; Bank)</Text>
+        <Text style={styles.sectionHint}>
+          Based on movement in cash / bank ledgers ({periodLabel})
+        </Text>
+
+        {cashFlow.perLedger.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>No cash/bank movement in this period.</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableCellLedger, styles.tableHeaderText]}>
+                Ledger
+              </Text>
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Inflow
+              </Text>
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Outflow
+              </Text>
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Net
+              </Text>
+            </View>
+
+            {cashFlow.perLedger.map((row: CashFlowLedgerRow) => {
+              const net = row.inflow - row.outflow;
+              return (
+                <View key={row.ledgerId} style={styles.tableRow}>
+                  <Text style={styles.tableCellLedger}>{row.name}</Text>
+                  <Text style={[styles.tableCellAmt, styles.right]}>
+                    {row.inflow
+                      ? `¥${row.inflow.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}`
+                      : ''}
+                  </Text>
+                  <Text style={[styles.tableCellAmt, styles.right]}>
+                    {row.outflow
+                      ? `¥${row.outflow.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}`
+                      : ''}
+                  </Text>
+                  <Text style={[styles.tableCellAmt, styles.right]}>
+                    {net !== 0
+                      ? `¥${net.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}`
+                      : ''}
+                  </Text>
+                </View>
+              );
+            })}
+
+            <View style={styles.tableFooterLine} />
+
+            <View style={styles.tableRow}>
+              <Text style={[styles.tableCellLedger, styles.totalLabel]}>
+                TOTAL
+              </Text>
+              <Text
+                style={[styles.tableCellAmt, styles.right, styles.totalAmount]}
+              >
+                ¥{cashFlow.totalIn.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                })}
+              </Text>
+              <Text
+                style={[styles.tableCellAmt, styles.right, styles.totalAmount]}
+              >
+                ¥{cashFlow.totalOut.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                })}
+              </Text>
+              <Text
+                style={[styles.tableCellAmt, styles.right, styles.totalAmount]}
+              >
+                ¥{cashFlow.net.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                })}
+              </Text>
+            </View>
+          </>
+        )}
+      </View>
+
+      {/* LEDGER ANALYSIS (FUNCTIONAL) */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Ledger Analysis (Top 10 by Turnover)</Text>
+        <Text style={styles.sectionHint}>
+          Turnover and closing balances for busy ledgers ({periodLabel})
+        </Text>
+
+        {ledgerAnalysis.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>No ledger movement in this period.</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableCellLedger, styles.tableHeaderText]}>
+                Ledger
+              </Text>
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Turnover
+              </Text>
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Closing
+              </Text>
+            </View>
+
+            {ledgerAnalysis.map((row: LedgerAnalysisRow) => (
+              <View key={row.ledgerId} style={styles.tableRow}>
+                <View style={{ flex: 2 }}>
+                  <Text style={styles.tableCellLedger}>{row.name}</Text>
+                  <Text style={styles.ledgerGroupText}>{row.groupName}</Text>
+                </View>
+                <Text style={[styles.tableCellAmt, styles.right]}>
+                  ¥{row.turnover.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                  })}
+                </Text>
+                <Text style={[styles.tableCellAmt, styles.right]}>
+                  {row.closing > 0 && row.closingType
+                    ? `¥${row.closing.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })} ${row.closingType}`
+                    : ''}
+                </Text>
+              </View>
+            ))}
+          </>
+        )}
+      </View>
+
+      {/* Planned Reports (visual same, just text slightly more generic) */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Planned Reports</Text>
         <View style={styles.reportGrid}>
           <View style={styles.reportCard}>
             <Text style={styles.reportTitle}>Profit & Loss</Text>
             <Text style={styles.reportText}>
-              Detailed period-wise P&L with groups (Sales, Purchases, etc).
+              More detailed P&L formats with schedules (Sales, Purchases, etc).
             </Text>
           </View>
           <View style={styles.reportCard}>
             <Text style={styles.reportTitle}>Balance Sheet</Text>
             <Text style={styles.reportText}>
-              Assets / Liabilities / Capital with schedules.
+              Full classified Balance Sheet with group-wise breakdown.
             </Text>
           </View>
           <View style={styles.reportCard}>
             <Text style={styles.reportTitle}>Cash Flow</Text>
             <Text style={styles.reportText}>
-              Movement in cash / bank ledgers consolidated.
+              Advanced cash flow (Operating / Investing / Financing) in future.
             </Text>
           </View>
           <View style={styles.reportCard}>
             <Text style={styles.reportTitle}>Ledger Analysis</Text>
             <Text style={styles.reportText}>
-              Turnover & balances per ledger with graphs.
+              Graphs and trends for each major ledger over time.
             </Text>
           </View>
         </View>
@@ -762,7 +1046,12 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 
-  // Planned reports (same as before, text adjusted slightly)
+  ledgerGroupText: {
+    fontSize: 10,
+    color: COLORS.muted,
+  },
+
+  // Planned reports
   reportGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

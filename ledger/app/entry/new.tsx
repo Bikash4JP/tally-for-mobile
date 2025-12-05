@@ -28,10 +28,15 @@ type EntryType = 'cashBook' | 'journal';
 
 type Line = {
   id: string;
-  ledgerId?: string;
   ledgerName: string;
   amount: string;
 };
+
+type CreateLedgerContext =
+  | { source: 'cash'; name: string }
+  | { source: 'other'; name: string }
+  | { source: 'journal-dr'; lineId: string; name: string }
+  | { source: 'journal-cr'; lineId: string; name: string };
 
 export default function NewEntryScreen() {
   const router = useRouter();
@@ -73,9 +78,18 @@ export default function NewEntryScreen() {
     return `${y}-${m}-${day}`;
   }, []);
 
+  // ----- CREATE LEDGER POPUP STATE -----
+  const [createCtx, setCreateCtx] = useState<CreateLedgerContext | null>(null);
+  const [newLedgerName, setNewLedgerName] = useState('');
+  const [newLedgerPartyType, setNewLedgerPartyType] =
+    useState<'debtor' | 'creditor'>('debtor');
+  const [newLedgerOpeningAmount, setNewLedgerOpeningAmount] = useState('');
+  const [newLedgerOpeningType, setNewLedgerOpeningType] =
+    useState<'Dr' | 'Cr'>('Dr');
+
   const cashLedgers = useMemo(
     () =>
-      ledgers.filter((l) =>
+      ledgers.filter((l: Ledger) =>
         ['cash', 'bank'].some((word) =>
           l.name.toLowerCase().includes(word),
         ),
@@ -87,31 +101,138 @@ export default function NewEntryScreen() {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return ledgers
-      .filter((l) => l.name.toLowerCase().includes(q))
+      .filter((l: Ledger) => l.name.toLowerCase().includes(q))
       .slice(0, 8);
   };
 
-  const createSimplePartyLedger = (name: string): Ledger => {
-    const clean = name.trim();
-    if (!clean) {
-      throw new Error('Cannot create ledger with empty name');
-    }
-    const existing = ledgers.find(
-      (l) => l.name.toLowerCase() === clean.toLowerCase(),
+  const findExistingByExactName = (name: string): Ledger | undefined => {
+    const q = name.trim().toLowerCase();
+    if (!q) return undefined;
+    return ledgers.find(
+      (l: Ledger) => l.name.trim().toLowerCase() === q,
     );
-    if (existing) return existing;
-
-    return addLedger({
-      name: clean,
-      groupName: 'Sundry Parties',
-      nature: 'Asset',
-      isParty: true,
-    });
   };
 
   const parseAmount = (v: string): number => {
     const num = parseFloat(v.replace(/,/g, ''));
     return Number.isNaN(num) ? 0 : Math.abs(num);
+  };
+
+  const getOrCreateOpeningLedger = (): Ledger => {
+    let opening = ledgers.find(
+      (l: Ledger) =>
+        l.name.toLowerCase() === 'opening balance adjustment',
+    );
+    if (opening) return opening;
+
+    // FIX: nature should be a valid LedgerNature (e.g. 'Liability')
+    return addLedger({
+      name: 'Opening Balance Adjustment',
+      groupName: 'Capital & Reserves',
+      nature: 'Liability',
+      isParty: false,
+    });
+  };
+
+  const openCreateLedger = (ctx: CreateLedgerContext) => {
+    setCreateCtx(ctx);
+    setNewLedgerName(ctx.name);
+    setNewLedgerPartyType('debtor');
+    setNewLedgerOpeningAmount('');
+    setNewLedgerOpeningType('Dr');
+  };
+
+  const handleCreateLedgerCancel = () => {
+    setCreateCtx(null);
+  };
+
+  const handleCreateLedgerSave = () => {
+    if (!createCtx) return;
+    const name = newLedgerName.trim();
+    if (!name) {
+      Alert.alert('Validation', 'Please enter ledger name.');
+      return;
+    }
+
+    let groupName =
+      newLedgerPartyType === 'debtor'
+        ? 'Sundry Debtors'
+        : 'Sundry Creditors';
+    const nature =
+      newLedgerPartyType === 'debtor' ? 'Asset' : 'Liability';
+
+    const existing = findExistingByExactName(name);
+    if (existing) {
+      Alert.alert(
+        'Already Exists',
+        `Ledger "${name}" already exists. Using existing one.`,
+      );
+      applyCreatedLedger(existing, createCtx);
+      setCreateCtx(null);
+      return;
+    }
+
+    const newLedger = addLedger({
+      name,
+      groupName,
+      nature,
+      isParty: true,
+    });
+
+    const openingAmountNum = parseAmount(newLedgerOpeningAmount);
+    if (openingAmountNum > 0) {
+      const openingType = newLedgerOpeningType;
+      const openingLedger = getOrCreateOpeningLedger();
+      const date =
+        entryType === 'journal' ? journalDate || todayDateStr : todayDateStr;
+
+      if (openingType === 'Dr') {
+        // New A/c Dr  To Opening
+        addTransaction({
+          date,
+          debitLedgerId: newLedger.id,
+          creditLedgerId: openingLedger.id,
+          amount: openingAmountNum,
+          narration: 'Opening balance',
+          voucherType: 'Journal',
+        });
+      } else {
+        // Opening Dr  To New A/c
+        addTransaction({
+          date,
+          debitLedgerId: openingLedger.id,
+          creditLedgerId: newLedger.id,
+          amount: openingAmountNum,
+          narration: 'Opening balance',
+          voucherType: 'Journal',
+        });
+      }
+    }
+
+    applyCreatedLedger(newLedger, createCtx);
+    setCreateCtx(null);
+  };
+
+  const applyCreatedLedger = (ledger: Ledger, ctx: CreateLedgerContext) => {
+    if (ctx.source === 'cash') {
+      setCashLedgerId(ledger.id);
+      setCashLedgerQuery(ledger.name);
+    } else if (ctx.source === 'other') {
+      setOtherLedgerId(ledger.id);
+      setOtherLedgerQuery(ledger.name);
+    } else if (ctx.source === 'journal-dr') {
+      setDebitLines((prev: Line[]) =>
+        prev.map((l) =>
+          l.id === ctx.lineId ? { ...l, ledgerName: ledger.name } : l,
+        ),
+      );
+    } else if (ctx.source === 'journal-cr') {
+      setCreditLines((prev: Line[]) =>
+        prev.map((l) =>
+          l.id === ctx.lineId ? { ...l, ledgerName: ledger.name } : l,
+        ),
+      );
+    }
   };
 
   // ========== SAVE: CASH BOOK ==========
@@ -122,31 +243,36 @@ export default function NewEntryScreen() {
       return;
     }
 
-    let usedCashLedger = cashLedgerId
-      ? ledgers.find((l) => l.id === cashLedgerId)
-      : undefined;
-
+    // Resolve cash ledger (FIX: avoid "string | Ledger" union)
+    let usedCashLedger: Ledger | undefined = undefined;
+    if (cashLedgerId) {
+      usedCashLedger = ledgers.find((l) => l.id === cashLedgerId);
+    }
+    if (!usedCashLedger && cashLedgerQuery.trim()) {
+      usedCashLedger = findExistingByExactName(cashLedgerQuery);
+    }
     if (!usedCashLedger) {
-      if (!cashLedgerQuery.trim()) {
-        Alert.alert('Validation', 'Please select or type Cash/Bank account.');
-        return;
-      }
-      usedCashLedger = createSimplePartyLedger(cashLedgerQuery);
+      Alert.alert(
+        'Select Cash/Bank',
+        'Please select or create a Cash/Bank ledger.',
+      );
+      return;
     }
 
-    let usedOtherLedger = otherLedgerId
-      ? ledgers.find((l) => l.id === otherLedgerId)
-      : undefined;
-
+    // Resolve other ledger (FIX: avoid "string | Ledger" union)
+    let usedOtherLedger: Ledger | undefined = undefined;
+    if (otherLedgerId) {
+      usedOtherLedger = ledgers.find((l) => l.id === otherLedgerId);
+    }
+    if (!usedOtherLedger && otherLedgerQuery.trim()) {
+      usedOtherLedger = findExistingByExactName(otherLedgerQuery);
+    }
     if (!usedOtherLedger) {
-      if (!otherLedgerQuery.trim()) {
-        Alert.alert(
-          'Validation',
-          'Please select or type the other account (Rent, Sales, Party, etc.).',
-        );
-        return;
-      }
-      usedOtherLedger = createSimplePartyLedger(otherLedgerQuery);
+      Alert.alert(
+        'Select Ledger',
+        'Please select or create the other ledger (Rent, Party, etc.).',
+      );
+      return;
     }
 
     const date = todayDateStr;
@@ -224,7 +350,7 @@ export default function NewEntryScreen() {
       return;
     }
 
-    if (drLines.length > 1 && crLines.length > 1) {
+    if (crLines.length > 1 && drLines.length > 1) {
       Alert.alert(
         'Limitation',
         'Abhi ke liye: ya to multiple Debits with a single Credit, ya multiple Credits with a single Debit supported hai.',
@@ -232,45 +358,72 @@ export default function NewEntryScreen() {
       return;
     }
 
+    const missing: { type: 'dr' | 'cr'; lineId: string; name: string }[] = [];
+
+    const resolveExisting = (type: 'dr' | 'cr', lineId: string, name: string) => {
+      const ledger = findExistingByExactName(name);
+      if (!ledger) {
+        missing.push({ type, lineId, name });
+      }
+      return ledger;
+    };
+
+    const drResolved = drLines.map((l) => ({
+      ...l,
+      ledger: resolveExisting('dr', l.id, l.ledgerName),
+    }));
+    const crResolved = crLines.map((l) => ({
+      ...l,
+      ledger: resolveExisting('cr', l.id, l.ledgerName),
+    }));
+
+    if (missing.length > 0) {
+      const first = missing[0];
+      const ctx: CreateLedgerContext = {
+        source: first.type === 'dr' ? 'journal-dr' : 'journal-cr',
+        lineId: first.lineId,
+        name: first.name,
+      };
+      openCreateLedger(ctx);
+      Alert.alert(
+        'Create Ledger',
+        `Ledger "${first.name}" does not exist yet. Please create it first.`,
+      );
+      return;
+    }
+
     const date = journalDate.trim() || todayDateStr;
     const narration = journalNarration.trim() || 'Journal entry';
 
-    const resolveLedger = (name: string): Ledger => {
-      const clean = name.trim();
-      const existing = ledgers.find(
-        (l) => l.name.toLowerCase() === clean.toLowerCase(),
-      );
-      if (existing) return existing;
-      return createSimplePartyLedger(clean);
-    };
-
-    if (crLines.length === 1) {
+    if (crResolved.length === 1) {
       // Many Dr → One Cr
-      const cr = crLines[0];
-      const crLedger = resolveLedger(cr.ledgerName);
+      const cr = crResolved[0];
+      if (!cr.ledger) return;
+      const crLedger = cr.ledger;
 
-      drLines.forEach((dr) => {
-        const drLedger = resolveLedger(dr.ledgerName);
+      drResolved.forEach((dr) => {
+        if (!dr.ledger) return;
         addTransaction({
           date,
-          debitLedgerId: drLedger.id,
+          debitLedgerId: dr.ledger.id,
           creditLedgerId: crLedger.id,
           amount: dr.amountNum,
           narration,
           voucherType: 'Journal',
         });
       });
-    } else if (drLines.length === 1) {
+    } else if (drResolved.length === 1) {
       // One Dr → Many Cr
-      const dr = drLines[0];
-      const drLedger = resolveLedger(dr.ledgerName);
+      const dr = drResolved[0];
+      if (!dr.ledger) return;
+      const drLedger = dr.ledger;
 
-      crLines.forEach((cr) => {
-        const crLedger = resolveLedger(cr.ledgerName);
+      crResolved.forEach((cr) => {
+        if (!cr.ledger) return;
         addTransaction({
           date,
           debitLedgerId: drLedger.id,
-          creditLedgerId: crLedger.id,
+          creditLedgerId: cr.ledger.id,
           amount: cr.amountNum,
           narration,
           voucherType: 'Journal',
@@ -307,51 +460,191 @@ export default function NewEntryScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Add Entry' }} />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.modeRow}>
-          {renderChip('cashBook', 'Cash Book')}
-          {renderChip('journal', 'Journal')}
-        </View>
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.modeRow}>
+            {renderChip('cashBook', 'Cash Book')}
+            {renderChip('journal', 'Journal')}
+          </View>
 
-        {entryType === 'cashBook' ? (
-          <CashBookForm
-            cashDirection={cashDirection}
-            setCashDirection={setCashDirection}
-            cashLedgers={cashLedgers}
-            cashLedgerId={cashLedgerId}
-            setCashLedgerId={setCashLedgerId}
-            cashLedgerQuery={cashLedgerQuery}
-            setCashLedgerQuery={setCashLedgerQuery}
-            otherLedgerId={otherLedgerId}
-            setOtherLedgerId={setOtherLedgerId}
-            otherLedgerQuery={otherLedgerQuery}
-            setOtherLedgerQuery={setOtherLedgerQuery}
-            amount={cashAmount}
-            setAmount={setCashAmount}
-            narration={cashNarration}
-            setNarration={setCashNarration}
-            findMatchingLedgers={findMatchingLedgers}
-            onSave={handleSaveCashBook}
-          />
-        ) : (
-          <JournalForm
-            date={journalDate}
-            setDate={setJournalDate}
-            narration={journalNarration}
-            setNarration={setJournalNarration}
-            debitLines={debitLines}
-            setDebitLines={setDebitLines}
-            creditLines={creditLines}
-            setCreditLines={setCreditLines}
-            findMatchingLedgers={findMatchingLedgers}
-            onSave={handleSaveJournal}
-          />
+          {entryType === 'cashBook' ? (
+            <CashBookForm
+              cashDirection={cashDirection}
+              setCashDirection={setCashDirection}
+              cashLedgers={cashLedgers}
+              cashLedgerId={cashLedgerId}
+              setCashLedgerId={setCashLedgerId}
+              cashLedgerQuery={cashLedgerQuery}
+              setCashLedgerQuery={setCashLedgerQuery}
+              otherLedgerId={otherLedgerId}
+              setOtherLedgerId={setOtherLedgerId}
+              otherLedgerQuery={otherLedgerQuery}
+              setOtherLedgerQuery={setOtherLedgerQuery}
+              amount={cashAmount}
+              setAmount={setCashAmount}
+              narration={cashNarration}
+              setNarration={setCashNarration}
+              findMatchingLedgers={findMatchingLedgers}
+              onSave={handleSaveCashBook}
+              onRequestCreateLedger={openCreateLedger}
+            />
+          ) : (
+            <JournalForm
+              date={journalDate}
+              setDate={setJournalDate}
+              narration={journalNarration}
+              setNarration={setJournalNarration}
+              debitLines={debitLines}
+              setDebitLines={setDebitLines}
+              creditLines={creditLines}
+              setCreditLines={setCreditLines}
+              findMatchingLedgers={findMatchingLedgers}
+              onSave={handleSaveJournal}
+              onRequestCreateLedger={openCreateLedger}
+            />
+          )}
+        </ScrollView>
+
+        {/* Create Ledger Overlay */}
+        {createCtx && (
+          <View style={styles.overlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Create New Ledger</Text>
+              <Text style={styles.modalHint}>
+                This will be added as a party ledger with optional opening balance.
+              </Text>
+
+              <Text style={[styles.label, { marginTop: 8 }]}>Ledger Name</Text>
+              <TextInput
+                style={styles.input}
+                value={newLedgerName}
+                onChangeText={setNewLedgerName}
+              />
+
+              <Text style={[styles.label, { marginTop: 8 }]}>Party Type</Text>
+              <View style={styles.chipRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.smallChip,
+                    newLedgerPartyType === 'debtor' &&
+                      styles.smallChipSelected,
+                  ]}
+                  onPress={() => {
+                    setNewLedgerPartyType('debtor');
+                    setNewLedgerOpeningType('Dr');
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.smallChipText,
+                      newLedgerPartyType === 'debtor' &&
+                        styles.smallChipTextSelected,
+                    ]}
+                  >
+                    Receivable (Debtor)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.smallChip,
+                    newLedgerPartyType === 'creditor' &&
+                      styles.smallChipSelected,
+                  ]}
+                  onPress={() => {
+                    setNewLedgerPartyType('creditor');
+                    setNewLedgerOpeningType('Cr');
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.smallChipText,
+                      newLedgerPartyType === 'creditor' &&
+                        styles.smallChipTextSelected,
+                    ]}
+                  >
+                    Payable (Creditor)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.label, { marginTop: 8 }]}>
+                Opening Balance (optional)
+              </Text>
+              <View style={styles.openingRow}>
+                <View style={{ flex: 1 }}>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={newLedgerOpeningAmount}
+                    onChangeText={setNewLedgerOpeningAmount}
+                  />
+                </View>
+                <View style={styles.openingTypeCol}>
+                  <TouchableOpacity
+                    style={[
+                      styles.smallChip,
+                      newLedgerOpeningType === 'Dr' &&
+                        styles.smallChipSelected,
+                    ]}
+                    onPress={() => setNewLedgerOpeningType('Dr')}
+                  >
+                    <Text
+                      style={[
+                        styles.smallChipText,
+                        newLedgerOpeningType === 'Dr' &&
+                          styles.smallChipTextSelected,
+                      ]}
+                    >
+                      Dr
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.smallChip,
+                      newLedgerOpeningType === 'Cr' &&
+                        styles.smallChipSelected,
+                    ]}
+                    onPress={() => setNewLedgerOpeningType('Cr')}
+                  >
+                    <Text
+                      style={[
+                        styles.smallChipText,
+                        newLedgerOpeningType === 'Cr' &&
+                          styles.smallChipTextSelected,
+                      ]}
+                    >
+                      Cr
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.modalButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonSecondary]}
+                  onPress={handleCreateLedgerCancel}
+                >
+                  <Text style={styles.modalButtonSecondaryText}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonPrimary]}
+                  onPress={handleCreateLedgerSave}
+                >
+                  <Text style={styles.modalButtonPrimaryText}>
+                    Save & Use
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         )}
-      </ScrollView>
+      </View>
     </>
   );
 }
@@ -375,6 +668,7 @@ type CashBookProps = {
   setNarration: (v: string) => void;
   findMatchingLedgers: (q: string) => Ledger[];
   onSave: () => void;
+  onRequestCreateLedger: (ctx: CreateLedgerContext) => void;
 };
 
 function CashBookForm(props: CashBookProps) {
@@ -396,14 +690,17 @@ function CashBookForm(props: CashBookProps) {
     setNarration,
     findMatchingLedgers,
     onSave,
+    onRequestCreateLedger,
   } = props;
 
   const cashSuggestions = useMemo(
     () =>
       cashLedgerQuery
         ? cashLedgers
-            .filter((l) =>
-              l.name.toLowerCase().includes(cashLedgerQuery.toLowerCase()),
+            .filter((l: Ledger) =>
+              l.name.toLowerCase().includes(
+                cashLedgerQuery.toLowerCase(),
+              ),
             )
             .slice(0, 6)
         : [],
@@ -414,6 +711,22 @@ function CashBookForm(props: CashBookProps) {
     () => findMatchingLedgers(otherLedgerQuery),
     [otherLedgerQuery, findMatchingLedgers],
   );
+
+  const hasExactCash = cashLedgerQuery.trim().length
+    ? cashLedgers.some(
+        (l: Ledger) =>
+          l.name.trim().toLowerCase() ===
+          cashLedgerQuery.trim().toLowerCase(),
+      )
+    : false;
+
+  const hasExactOther = otherLedgerQuery.trim().length
+    ? otherSuggestions.some(
+        (l: Ledger) =>
+          l.name.trim().toLowerCase() ===
+          otherLedgerQuery.trim().toLowerCase(),
+      )
+    : false;
 
   return (
     <View style={styles.card}>
@@ -463,9 +776,9 @@ function CashBookForm(props: CashBookProps) {
           setCashLedgerId(undefined);
         }}
       />
-      {cashSuggestions.length > 0 && (
+      {(cashSuggestions.length > 0 || cashLedgerQuery.trim().length > 0) && (
         <View style={styles.suggestionBox}>
-          {cashSuggestions.map((ledger) => (
+          {cashSuggestions.map((ledger: Ledger) => (
             <TouchableOpacity
               key={ledger.id}
               style={styles.suggestionItem}
@@ -477,6 +790,21 @@ function CashBookForm(props: CashBookProps) {
               <Text style={styles.suggestionText}>{ledger.name}</Text>
             </TouchableOpacity>
           ))}
+          {!hasExactCash && cashLedgerQuery.trim().length > 0 && (
+            <TouchableOpacity
+              style={styles.suggestionItemCreate}
+              onPress={() =>
+                onRequestCreateLedger({
+                  source: 'cash',
+                  name: cashLedgerQuery.trim(),
+                })
+              }
+            >
+              <Text style={styles.suggestionCreateText}>
+                + Create "{cashLedgerQuery.trim()}" as new ledger
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -489,9 +817,9 @@ function CashBookForm(props: CashBookProps) {
           setOtherLedgerId(undefined);
         }}
       />
-      {otherSuggestions.length > 0 && (
+      {(otherSuggestions.length > 0 || otherLedgerQuery.trim().length > 0) && (
         <View style={styles.suggestionBox}>
-          {otherSuggestions.map((ledger) => (
+          {otherSuggestions.map((ledger: Ledger) => (
             <TouchableOpacity
               key={ledger.id}
               style={styles.suggestionItem}
@@ -503,6 +831,21 @@ function CashBookForm(props: CashBookProps) {
               <Text style={styles.suggestionText}>{ledger.name}</Text>
             </TouchableOpacity>
           ))}
+          {!hasExactOther && otherLedgerQuery.trim().length > 0 && (
+            <TouchableOpacity
+              style={styles.suggestionItemCreate}
+              onPress={() =>
+                onRequestCreateLedger({
+                  source: 'other',
+                  name: otherLedgerQuery.trim(),
+                })
+              }
+            >
+              <Text style={styles.suggestionCreateText}>
+                + Create "{otherLedgerQuery.trim()}" as new ledger
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -541,6 +884,7 @@ type JournalProps = {
   setCreditLines: (ls: Line[]) => void;
   findMatchingLedgers: (q: string) => Ledger[];
   onSave: () => void;
+  onRequestCreateLedger: (ctx: CreateLedgerContext) => void;
 };
 
 function JournalForm(props: JournalProps) {
@@ -555,6 +899,7 @@ function JournalForm(props: JournalProps) {
     setCreditLines,
     findMatchingLedgers,
     onSave,
+    onRequestCreateLedger,
   } = props;
 
   const updateLine = (
@@ -597,6 +942,14 @@ function JournalForm(props: JournalProps) {
 
   const renderLine = (type: 'dr' | 'cr', line: Line, index: number) => {
     const suggestions = findMatchingLedgers(line.ledgerName);
+    const hasExact =
+      line.ledgerName.trim().length > 0
+        ? suggestions.some(
+            (l: Ledger) =>
+              l.name.trim().toLowerCase() ===
+              line.ledgerName.trim().toLowerCase(),
+          )
+        : false;
 
     return (
       <View key={line.id} style={styles.journalLine}>
@@ -609,9 +962,9 @@ function JournalForm(props: JournalProps) {
             value={line.ledgerName}
             onChangeText={(v) => updateLine(type, line.id, { ledgerName: v })}
           />
-          {suggestions.length > 0 && line.ledgerName.trim().length > 0 && (
+          {(suggestions.length > 0 || line.ledgerName.trim().length > 0) && (
             <View style={styles.suggestionBox}>
-              {suggestions.map((ledger) => (
+              {suggestions.map((ledger: Ledger) => (
                 <TouchableOpacity
                   key={ledger.id}
                   style={styles.suggestionItem}
@@ -622,6 +975,22 @@ function JournalForm(props: JournalProps) {
                   <Text style={styles.suggestionText}>{ledger.name}</Text>
                 </TouchableOpacity>
               ))}
+              {!hasExact && line.ledgerName.trim().length > 0 && (
+                <TouchableOpacity
+                  style={styles.suggestionItemCreate}
+                  onPress={() =>
+                    onRequestCreateLedger({
+                      source: type === 'dr' ? 'journal-dr' : 'journal-cr',
+                      lineId: line.id,
+                      name: line.ledgerName.trim(),
+                    })
+                  }
+                >
+                  <Text style={styles.suggestionCreateText}>
+                    + Create "{line.ledgerName.trim()}" as new ledger
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
@@ -822,6 +1191,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.dark,
   },
+  suggestionItemCreate: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    backgroundColor: '#fdf7fb',
+  },
+  suggestionCreateText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
 
   saveButton: {
     marginTop: 16,
@@ -886,5 +1267,73 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 11,
     color: COLORS.danger,
+  },
+
+  // Overlay
+  overlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    padding: 14,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.dark,
+  },
+  modalHint: {
+    fontSize: 11,
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  openingRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+    alignItems: 'center',
+  },
+  openingTypeCol: {
+    width: 70,
+    gap: 4,
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 14,
+  },
+  modalButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  modalButtonSecondary: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: '#ffffff',
+  },
+  modalButtonPrimary: {
+    backgroundColor: COLORS.primary,
+  },
+  modalButtonSecondaryText: {
+    fontSize: 13,
+    color: COLORS.dark,
+  },
+  modalButtonPrimaryText: {
+    fontSize: 13,
+    color: COLORS.lightBg,
+    fontWeight: '600',
   },
 });
