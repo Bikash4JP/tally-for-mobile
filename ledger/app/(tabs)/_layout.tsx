@@ -48,7 +48,6 @@ export default function TabsLayout() {
         },
       }}
     >
-      {/* 👇 YEH Home tab hai ⇒ app/(tabs)/index.tsx open karega */}
       <Tabs.Screen
         name="index"
         options={{
@@ -58,8 +57,6 @@ export default function TabsLayout() {
           ),
         }}
       />
-
-      {/* 👇 Entries tab ⇒ app/(tabs)/entries.tsx */}
       <Tabs.Screen
         name="entries"
         options={{
@@ -69,7 +66,6 @@ export default function TabsLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="ledgers"
         options={{
@@ -83,7 +79,6 @@ export default function TabsLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="reports"
         options={{
@@ -97,13 +92,16 @@ export default function TabsLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="settings"
         options={{
           title: labels.settings,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
+            <MaterialCommunityIcons
+              name="cog-outline"
+              size={size}
+              color={color}
+            />
           ),
         }}
       />

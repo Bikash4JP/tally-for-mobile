@@ -1,4 +1,4 @@
-// src/context/LanguageContext.tsx
+// src/context/SettingsContext.tsx
 import React, {
   createContext,
   useContext,
@@ -8,54 +8,78 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type Language = 'en' | 'ja';
+export type AppLanguage = 'en' | 'ja';
+export type AppTheme = 'light' | 'dark' | 'system';
 
-type LanguageContextValue = {
-  language: Language;
-  setLanguage: (lang: Language) => void;
+export type SettingsContextValue = {
+  language: AppLanguage;
+  setLanguage: (lang: AppLanguage) => void;
+  theme: AppTheme;
+  setTheme: (theme: AppTheme) => void;
 };
 
-const LanguageContext = createContext<LanguageContextValue | undefined>(
+const SettingsContext = createContext<SettingsContextValue | undefined>(
   undefined,
 );
 
-const STORAGE_KEY = 'ledger_app_language_v1';
+type Props = {
+  children: ReactNode;
+};
 
-export const LanguageProvider = ({ children }: { children: ReactNode }) => {
-  const [language, setLanguageState] = useState<Language>('en');
+export function SettingsProvider({ children }: Props) {
+  const [language, setLanguageState] = useState<AppLanguage>('en');
+  const [theme, setThemeState] = useState<AppTheme>('system');
 
-  // load saved language on app start
   useEffect(() => {
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored === 'en' || stored === 'ja') {
-          setLanguageState(stored);
+        const storedLang = await AsyncStorage.getItem('settings_language');
+        const storedTheme = await AsyncStorage.getItem('settings_theme');
+
+        if (storedLang === 'en' || storedLang === 'ja') {
+          setLanguageState(storedLang);
         }
-      } catch {
-        // ignore
+        if (
+          storedTheme === 'light' ||
+          storedTheme === 'dark' ||
+          storedTheme === 'system'
+        ) {
+          setThemeState(storedTheme);
+        }
+      } catch (e) {
+        console.warn('Failed to load settings', e);
       }
     })();
   }, []);
 
-  const setLanguage = (lang: Language) => {
+  const setLanguage = (lang: AppLanguage) => {
     setLanguageState(lang);
-    AsyncStorage.setItem(STORAGE_KEY, lang).catch(() => {
-      // ignore storage error
-    });
+    AsyncStorage.setItem('settings_language', lang).catch(() => {});
+  };
+
+  const setTheme = (t: AppTheme) => {
+    setThemeState(t);
+    AsyncStorage.setItem('settings_theme', t).catch(() => {});
+  };
+
+  const value: SettingsContextValue = {
+    language,
+    setLanguage,
+    theme,
+    setTheme,
   };
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage }}>
+    <SettingsContext.Provider value={value}>
       {children}
-    </LanguageContext.Provider>
+    </SettingsContext.Provider>
   );
-};
+}
 
-export const useLanguage = (): LanguageContextValue => {
-  const ctx = useContext(LanguageContext);
+export function useSettings(): SettingsContextValue {
+  const ctx = useContext(SettingsContext);
   if (!ctx) {
-    throw new Error('useLanguage must be used within a LanguageProvider');
+    throw new Error('useSettings must be used within SettingsProvider');
   }
   return ctx;
-};
+}

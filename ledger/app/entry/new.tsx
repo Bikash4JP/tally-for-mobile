@@ -1,5 +1,7 @@
 // app/entry/new.tsx
 import React, { useMemo, useState } from 'react';
+import { useSettings } from '../../src/context/SettingsContext';
+import { getLedgerLabel } from '../../src/utils/ledgerLabels';
 import {
   View,
   Text,
@@ -41,6 +43,16 @@ type CreateLedgerContext =
 export default function NewEntryScreen() {
   const router = useRouter();
   const { ledgers, addTransaction, addLedger } = useData();
+  const settings = useSettings() as any;
+const language: 'en' | 'ja' = settings.language ?? 'en';
+  // Ledger ko UI me dikhane ke liye label (EN/JA switch)
+  const getLedgerDisplayName = React.useCallback(
+    (ledger: import('../../src/models/ledger').Ledger | null | undefined) => {
+      if (!ledger) return '';
+      return getLedgerLabel(ledger, language);
+    },
+    [language],
+  );
 
   const [entryType, setEntryType] = useState<EntryType>('cashBook');
 

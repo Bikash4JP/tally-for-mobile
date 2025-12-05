@@ -1,21 +1,13 @@
 // app/(tabs)/reports.tsx
 import React, { useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useData } from '../../src/context/AppDataContext';
 import { useSettings } from '../../src/context/SettingsContext';
-import {
-  getLedgerLabel,
-  getLedgerLabelByName,
-} from '../../src/utils/ledgerLabels';
+import { getLedgerLabel, getLedgerLabelByName } from '../../src/utils/ledgerLabels';
 
 import type { Ledger } from '../../src/models/ledger';
 import type { Transaction } from '../../src/models/transaction';
+
 
 const COLORS = {
   primary: '#ac0c79',
@@ -30,7 +22,7 @@ type ReportMode = 'overall' | 'monthly' | 'yearly';
 
 type TrialRow = {
   ledgerId: string;
-  name: string; // stored in English key; UI uses getLedgerLabel* for language
+  name: string;
   debit: number;
   credit: number;
 };
@@ -79,114 +71,14 @@ function parseDateSafe(dateStr: string): Date | null {
 
 export default function ReportsScreen() {
   const { ledgers, transactions } = useData();
-  const { language } = useSettings(); // 'en' | 'ja'
+  
   const [mode, setMode] = useState<ReportMode>('overall');
 
   const today = useMemo(() => new Date(), []);
 
-  const texts = useMemo(
-    () => ({
-      title: language === 'ja' ? 'レポート' : 'Reports',
-      subtitle:
-        language === 'ja'
-          ? '試算表・損益計算書・貸借対照表・キャッシュフロー・元帳分析'
-          : 'Trial balance, Profit & Loss, Balance Sheet, Cash Flow & Ledger Analysis.',
-      modeOverall: language === 'ja' ? '全期間' : 'Overall',
-      modeMonthly: language === 'ja' ? '今月' : 'Monthly',
-      modeYearly: language === 'ja' ? '今年' : 'Yearly',
-      trialTitle: language === 'ja' ? '試算表' : 'Trial Balance',
-      plTitle:
-        language === 'ja' ? '損益計算書（P&L）' : 'Profit & Loss Account',
-      bsTitle:
-        language === 'ja' ? '貸借対照表（Balance Sheet）' : 'Balance Sheet',
-      cashFlowTitle:
-        language === 'ja' ? 'キャッシュフロー（現金・預金）' : 'Cash Flow (Cash & Bank)',
-      cashFlowHint:
-        language === 'ja'
-          ? '現金・預金勘定の入出金ベース'
-          : 'Based on movement in cash / bank ledgers',
-      ledgerAnalysisTitle:
-        language === 'ja'
-          ? '元帳分析（取引高トップ10）'
-          : 'Ledger Analysis (Top 10 by Turnover)',
-      ledgerAnalysisHint:
-        language === 'ja'
-          ? '取引高と期末残高のサマリー'
-          : 'Turnover and closing balances for busy ledgers',
-      debit: language === 'ja' ? '借方' : 'Debit',
-      credit: language === 'ja' ? '貸方' : 'Credit',
-      inflow: language === 'ja' ? '入金' : 'Inflow',
-      outflow: language === 'ja' ? '出金' : 'Outflow',
-      net: language === 'ja' ? '純額' : 'Net',
-      ledgerHeader: language === 'ja' ? '勘定科目' : 'Ledger',
-      total: language === 'ja' ? '合計' : 'TOTAL',
-      noTx: language === 'ja' ? 'まだ仕訳がありません。' : 'No transactions yet.',
-      noPL:
-        language === 'ja'
-          ? '収益・費用データがありません。'
-          : 'No income/expense data yet.',
-      noBS:
-        language === 'ja'
-          ? '資産・負債データがありません。'
-          : 'No assets/liabilities yet.',
-      noCash:
-        language === 'ja'
-          ? 'この期間の現金・預金の動きはありません。'
-          : 'No cash/bank movement in this period.',
-      noLedgerAnalysis:
-        language === 'ja'
-          ? 'この期間の元帳の動きはありません。'
-          : 'No ledger movement in this period.',
-      expenses: language === 'ja' ? '費用（借方）' : 'Expenses (Dr)',
-      incomes: language === 'ja' ? '収益（貸方）' : 'Incomes (Cr)',
-      totalExpenses: language === 'ja' ? '費用合計' : 'Total Expenses',
-      totalIncomes: language === 'ja' ? '収益合計' : 'Total Incomes',
-      netProfit: language === 'ja' ? '当期純利益' : 'Net Profit',
-      netLoss: language === 'ja' ? '当期純損失' : 'Net Loss',
-      liabilities: language === 'ja' ? '負債・資本' : 'Liabilities',
-      assets: language === 'ja' ? '資産' : 'Assets',
-      totalLiabilities:
-        language === 'ja' ? '負債・資本合計' : 'Total Liabilities',
-      totalAssets: language === 'ja' ? '資産合計' : 'Total Assets',
-      plannedReports: language === 'ja' ? '今後追加予定のレポート' : 'Planned Reports',
-      plannedPL: language === 'ja' ? '詳細な損益計算書' : 'Profit & Loss',
-      plannedPLText:
-        language === 'ja'
-          ? '売上・仕入など内訳付きの詳細P&L。'
-          : 'More detailed P&L formats with schedules (Sales, Purchases, etc).',
-      plannedBS: language === 'ja' ? '詳細な貸借対照表' : 'Balance Sheet',
-      plannedBSText:
-        language === 'ja'
-          ? 'グループ別の内訳付き貸借対照表。'
-          : 'Full classified Balance Sheet with group-wise breakdown.',
-      plannedCF: language === 'ja' ? '高度なキャッシュフロー' : 'Cash Flow',
-      plannedCFText:
-        language === 'ja'
-          ? '営業・投資・財務キャッシュフロー区分など。'
-          : 'Advanced cash flow (Operating / Investing / Financing).',
-      plannedLA: language === 'ja' ? '元帳の推移分析' : 'Ledger Analysis',
-      plannedLAText:
-        language === 'ja'
-          ? '主要科目ごとのグラフやトレンド分析。'
-          : 'Graphs and trends for each major ledger over time.',
-    }),
-    [language],
-  );
-
   const periodLabel = useMemo(() => {
     const y = today.getFullYear();
     const m = `${today.getMonth() + 1}`.padStart(2, '0');
-
-    if (language === 'ja') {
-      switch (mode) {
-        case 'monthly':
-          return `今月 (${y}-${m})`;
-        case 'yearly':
-          return `今年 (${y}年)`;
-        default:
-          return '全期間';
-      }
-    }
 
     switch (mode) {
       case 'monthly':
@@ -196,7 +88,7 @@ export default function ReportsScreen() {
       default:
         return 'All Transactions';
     }
-  }, [mode, today, language]);
+  }, [mode, today]);
 
   const filteredTransactions: Transaction[] = useMemo(() => {
     if (mode === 'overall') return transactions;
@@ -238,7 +130,7 @@ export default function ReportsScreen() {
 
       return {
         ledgerId: ledger.id,
-        name: ledger.name, // English key
+        name: ledger.name,
         debit: debitTotal,
         credit: creditTotal,
       };
@@ -288,7 +180,7 @@ export default function ReportsScreen() {
         if (amount > 0) {
           expenses.push({
             ledgerId: row.ledgerId,
-            name: getLedgerLabel(ledger, language),
+            name: ledger.name,
             amount,
           });
         }
@@ -297,7 +189,7 @@ export default function ReportsScreen() {
         if (amount > 0) {
           incomes.push({
             ledgerId: row.ledgerId,
-            name: getLedgerLabel(ledger, language),
+            name: ledger.name,
             amount,
           });
         }
@@ -316,7 +208,7 @@ export default function ReportsScreen() {
       netProfit: diff > 0 ? diff : 0,
       netLoss: diff < 0 ? -diff : 0,
     };
-  }, [trialRows, ledgerMap, language]);
+  }, [trialRows, ledgerMap]);
 
   // ========== BALANCE SHEET ==========
   const {
@@ -350,13 +242,13 @@ export default function ReportsScreen() {
       if (ledger.nature === 'Asset') {
         assets.push({
           ledgerId: row.ledgerId,
-          name: getLedgerLabel(ledger, language),
+          name: ledger.name,
           amount: balance,
         });
       } else if (ledger.nature === 'Liability') {
         liabilities.push({
           ledgerId: row.ledgerId,
-          name: getLedgerLabel(ledger, language),
+          name: ledger.name,
           amount: balance,
         });
       }
@@ -365,19 +257,13 @@ export default function ReportsScreen() {
     if (netProfit > 0) {
       liabilities.push({
         ledgerId: 'PL_PROFIT',
-        name:
-          language === 'ja'
-            ? '当期純利益（損益計算書より）'
-            : 'Net Profit (from P&L)',
+        name: 'Net Profit (from P&L)',
         amount: netProfit,
       });
     } else if (netLoss > 0) {
       assets.push({
         ledgerId: 'PL_LOSS',
-        name:
-          language === 'ja'
-            ? '当期純損失（損益計算書より）'
-            : 'Net Loss (from P&L)',
+        name: 'Net Loss (from P&L)',
         amount: netLoss,
       });
     }
@@ -391,7 +277,7 @@ export default function ReportsScreen() {
       totalAssets: totalA,
       totalLiabilities: totalL,
     };
-  }, [trialRows, ledgerMap, netProfit, netLoss, language]);
+  }, [trialRows, ledgerMap, netProfit, netLoss]);
 
   // ========== CASH FLOW (CASH / BANK MOVEMENT) ==========
   const cashFlow: CashFlowSummary = useMemo(() => {
@@ -425,7 +311,7 @@ export default function ReportsScreen() {
       if (!perMap[ledgerId]) {
         perMap[ledgerId] = {
           ledgerId,
-          name: getLedgerLabel(ledger, language),
+          name: ledger.name,
           inflow: 0,
           outflow: 0,
         };
@@ -458,7 +344,7 @@ export default function ReportsScreen() {
       totalOut,
       net,
     };
-  }, [filteredTransactions, ledgerMap, language]);
+  }, [filteredTransactions, ledgerMap]);
 
   // ========== LEDGER ANALYSIS (TURNOVER + CLOSING) ==========
   const ledgerAnalysis: LedgerAnalysisRow[] = useMemo(() => {
@@ -491,7 +377,7 @@ export default function ReportsScreen() {
 
         return {
           ledgerId: row.ledgerId,
-          name: getLedgerLabel(ledger, language),
+          name: ledger.name,
           groupName: ledger.groupName,
           turnover,
           closing,
@@ -503,7 +389,7 @@ export default function ReportsScreen() {
     // Top 10 by turnover for quick analysis
     rows.sort((a, b) => b.turnover - a.turnover);
     return rows.slice(0, 10);
-  }, [trialRows, ledgerMap, language]);
+  }, [trialRows, ledgerMap]);
 
   const renderModeTag = (value: ReportMode, label: string) => {
     const selected = mode === value;
@@ -527,51 +413,45 @@ export default function ReportsScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.title}>{texts.title}</Text>
+          <Text style={styles.title}>Reports</Text>
           <Text style={styles.subtitle}>
-            {texts.subtitle} ({periodLabel})
+            Trial balance, Profit &amp; Loss, Balance Sheet, Cash Flow &amp; Ledger Summary ({periodLabel}).
           </Text>
         </View>
       </View>
 
       <View style={styles.modesRow}>
-        {renderModeTag('overall', texts.modeOverall)}
-        {renderModeTag('monthly', texts.modeMonthly)}
-        {renderModeTag('yearly', texts.modeYearly)}
+        {renderModeTag('overall', 'Overall')}
+        {renderModeTag('monthly', 'Monthly')}
+        {renderModeTag('yearly', 'Yearly')}
       </View>
 
       {/* TRIAL BALANCE */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{texts.trialTitle}</Text>
+      <View className="tb-section" style={styles.section}>
+        <Text style={styles.sectionTitle}>Trial Balance</Text>
         <Text style={styles.sectionHint}>{periodLabel}</Text>
 
         <View style={styles.tableHeader}>
           <Text style={[styles.tableCellLedger, styles.tableHeaderText]}>
-            {texts.ledgerHeader}
+            Ledger
           </Text>
-          <Text
-            style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}
-          >
-            {texts.debit}
+          <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+            Debit
           </Text>
-          <Text
-            style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}
-          >
-            {texts.credit}
+          <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+            Credit
           </Text>
         </View>
 
         {trialRows.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>{texts.noTx}</Text>
+            <Text style={styles.emptyText}>No transactions yet.</Text>
           </View>
         ) : (
           <>
             {trialRows.map((row: TrialRow) => (
               <View style={styles.tableRow} key={row.ledgerId}>
-                <Text style={styles.tableCellLedger}>
-                  {getLedgerLabelByName(row.name, language)}
-                </Text>
+                <Text style={styles.tableCellLedger}>{row.name}</Text>
                 <Text style={[styles.tableCellAmt, styles.right]}>
                   {row.debit
                     ? `¥${row.debit.toLocaleString(undefined, {
@@ -593,7 +473,7 @@ export default function ReportsScreen() {
 
             <View style={styles.tableRow}>
               <Text style={[styles.tableCellLedger, styles.totalLabel]}>
-                {texts.total}
+                TOTAL
               </Text>
               <Text
                 style={[styles.tableCellAmt, styles.right, styles.totalAmount]}
@@ -616,17 +496,17 @@ export default function ReportsScreen() {
 
       {/* PROFIT & LOSS */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{texts.plTitle}</Text>
+        <Text style={styles.sectionTitle}>Profit &amp; Loss Account</Text>
         <Text style={styles.sectionHint}>{periodLabel}</Text>
 
         {expenseRows.length === 0 && incomeRows.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>{texts.noPL}</Text>
+            <Text style={styles.emptyText}>No income/expense data yet.</Text>
           </View>
         ) : (
           <View style={styles.plColumnsRow}>
             <View style={styles.plColumn}>
-              <Text style={styles.plColumnTitle}>{texts.expenses}</Text>
+              <Text style={styles.plColumnTitle}>Expenses (Dr)</Text>
               {expenseRows.map((row: PlRow) => (
                 <View key={row.ledgerId} style={styles.plRow}>
                   <Text style={styles.plName}>{row.name}</Text>
@@ -638,9 +518,7 @@ export default function ReportsScreen() {
                 </View>
               ))}
               <View style={styles.plTotalRow}>
-                <Text style={styles.plTotalLabel}>
-                  {texts.totalExpenses}
-                </Text>
+                <Text style={styles.plTotalLabel}>Total Expenses</Text>
                 <Text style={styles.plTotalAmount}>
                   ¥{totalExpense.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
@@ -649,7 +527,7 @@ export default function ReportsScreen() {
               </View>
               {netProfit > 0 && (
                 <View style={styles.plNetRow}>
-                  <Text style={styles.plNetLabel}>{texts.netProfit}</Text>
+                  <Text style={styles.plNetLabel}>Net Profit</Text>
                   <Text style={styles.plNetAmount}>
                     ¥{netProfit.toLocaleString(undefined, {
                       minimumFractionDigits: 2,
@@ -660,7 +538,7 @@ export default function ReportsScreen() {
             </View>
 
             <View style={styles.plColumn}>
-              <Text style={styles.plColumnTitle}>{texts.incomes}</Text>
+              <Text style={styles.plColumnTitle}>Incomes (Cr)</Text>
               {incomeRows.map((row: PlRow) => (
                 <View key={row.ledgerId} style={styles.plRow}>
                   <Text style={styles.plName}>{row.name}</Text>
@@ -672,9 +550,7 @@ export default function ReportsScreen() {
                 </View>
               ))}
               <View style={styles.plTotalRow}>
-                <Text style={styles.plTotalLabel}>
-                  {texts.totalIncomes}
-                </Text>
+                <Text style={styles.plTotalLabel}>Total Incomes</Text>
                 <Text style={styles.plTotalAmount}>
                   ¥{totalIncome.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
@@ -683,7 +559,7 @@ export default function ReportsScreen() {
               </View>
               {netLoss > 0 && (
                 <View style={styles.plNetRowLoss}>
-                  <Text style={styles.plNetLabel}>{texts.netLoss}</Text>
+                  <Text style={styles.plNetLabel}>Net Loss</Text>
                   <Text style={styles.plNetAmount}>
                     ¥{netLoss.toLocaleString(undefined, {
                       minimumFractionDigits: 2,
@@ -698,17 +574,17 @@ export default function ReportsScreen() {
 
       {/* BALANCE SHEET */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{texts.bsTitle}</Text>
+        <Text style={styles.sectionTitle}>Balance Sheet</Text>
         <Text style={styles.sectionHint}>{periodLabel}</Text>
 
         {assetRows.length === 0 && liabilityRows.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>{texts.noBS}</Text>
+            <Text style={styles.emptyText}>No assets/liabilities yet.</Text>
           </View>
         ) : (
           <View style={styles.bsColumnsRow}>
             <View style={styles.bsColumn}>
-              <Text style={styles.bsColumnTitle}>{texts.liabilities}</Text>
+              <Text style={styles.bsColumnTitle}>Liabilities</Text>
               {liabilityRows.map((row: BsRow) => (
                 <View key={row.ledgerId} style={styles.bsRow}>
                   <Text style={styles.bsName}>{row.name}</Text>
@@ -720,9 +596,7 @@ export default function ReportsScreen() {
                 </View>
               ))}
               <View style={styles.bsTotalRow}>
-                <Text style={styles.bsTotalLabel}>
-                  {texts.totalLiabilities}
-                </Text>
+                <Text style={styles.bsTotalLabel}>Total Liabilities</Text>
                 <Text style={styles.bsTotalAmount}>
                   ¥{totalLiabilities.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
@@ -732,7 +606,7 @@ export default function ReportsScreen() {
             </View>
 
             <View style={styles.bsColumn}>
-              <Text style={styles.bsColumnTitle}>{texts.assets}</Text>
+              <Text style={styles.bsColumnTitle}>Assets</Text>
               {assetRows.map((row: BsRow) => (
                 <View key={row.ledgerId} style={styles.bsRow}>
                   <Text style={styles.bsName}>{row.name}</Text>
@@ -744,7 +618,7 @@ export default function ReportsScreen() {
                 </View>
               ))}
               <View style={styles.bsTotalRow}>
-                <Text style={styles.bsTotalLabel}>{texts.totalAssets}</Text>
+                <Text style={styles.bsTotalLabel}>Total Assets</Text>
                 <Text style={styles.bsTotalAmount}>
                   ¥{totalAssets.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
@@ -758,35 +632,29 @@ export default function ReportsScreen() {
 
       {/* CASH FLOW (FUNCTIONAL) */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{texts.cashFlowTitle}</Text>
+        <Text style={styles.sectionTitle}>Cash Flow (Cash &amp; Bank)</Text>
         <Text style={styles.sectionHint}>
-          {texts.cashFlowHint} ({periodLabel})
+          Based on movement in cash / bank ledgers ({periodLabel})
         </Text>
 
         {cashFlow.perLedger.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>{texts.noCash}</Text>
+            <Text style={styles.emptyText}>No cash/bank movement in this period.</Text>
           </View>
         ) : (
           <>
             <View style={styles.tableHeader}>
               <Text style={[styles.tableCellLedger, styles.tableHeaderText]}>
-                {texts.ledgerHeader}
+                Ledger
               </Text>
-              <Text
-                style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}
-              >
-                {texts.inflow}
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Inflow
               </Text>
-              <Text
-                style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}
-              >
-                {texts.outflow}
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Outflow
               </Text>
-              <Text
-                style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}
-              >
-                {texts.net}
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Net
               </Text>
             </View>
 
@@ -824,7 +692,7 @@ export default function ReportsScreen() {
 
             <View style={styles.tableRow}>
               <Text style={[styles.tableCellLedger, styles.totalLabel]}>
-                {texts.total}
+                TOTAL
               </Text>
               <Text
                 style={[styles.tableCellAmt, styles.right, styles.totalAmount]}
@@ -854,30 +722,26 @@ export default function ReportsScreen() {
 
       {/* LEDGER ANALYSIS (FUNCTIONAL) */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{texts.ledgerAnalysisTitle}</Text>
+        <Text style={styles.sectionTitle}>Ledger Analysis (Top 10 by Turnover)</Text>
         <Text style={styles.sectionHint}>
-          {texts.ledgerAnalysisHint} ({periodLabel})
+          Turnover and closing balances for busy ledgers ({periodLabel})
         </Text>
 
         {ledgerAnalysis.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>{texts.noLedgerAnalysis}</Text>
+            <Text style={styles.emptyText}>No ledger movement in this period.</Text>
           </View>
         ) : (
           <>
             <View style={styles.tableHeader}>
               <Text style={[styles.tableCellLedger, styles.tableHeaderText]}>
-                {texts.ledgerHeader}
+                Ledger
               </Text>
-              <Text
-                style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}
-              >
-                {language === 'ja' ? '取引高' : 'Turnover'}
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Turnover
               </Text>
-              <Text
-                style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}
-              >
-                {language === 'ja' ? '期末残高' : 'Closing'}
+              <Text style={[styles.tableCellAmt, styles.tableHeaderText, styles.right]}>
+                Closing
               </Text>
             </View>
 
@@ -905,25 +769,33 @@ export default function ReportsScreen() {
         )}
       </View>
 
-      {/* Planned Reports */}
+      {/* Planned Reports (visual same, just text slightly more generic) */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{texts.plannedReports}</Text>
+        <Text style={styles.sectionTitle}>Planned Reports</Text>
         <View style={styles.reportGrid}>
           <View style={styles.reportCard}>
-            <Text style={styles.reportTitle}>{texts.plannedPL}</Text>
-            <Text style={styles.reportText}>{texts.plannedPLText}</Text>
+            <Text style={styles.reportTitle}>Profit & Loss</Text>
+            <Text style={styles.reportText}>
+              More detailed P&L formats with schedules (Sales, Purchases, etc).
+            </Text>
           </View>
           <View style={styles.reportCard}>
-            <Text style={styles.reportTitle}>{texts.plannedBS}</Text>
-            <Text style={styles.reportText}>{texts.plannedBSText}</Text>
+            <Text style={styles.reportTitle}>Balance Sheet</Text>
+            <Text style={styles.reportText}>
+              Full classified Balance Sheet with group-wise breakdown.
+            </Text>
           </View>
           <View style={styles.reportCard}>
-            <Text style={styles.reportTitle}>{texts.plannedCF}</Text>
-            <Text style={styles.reportText}>{texts.plannedCFText}</Text>
+            <Text style={styles.reportTitle}>Cash Flow</Text>
+            <Text style={styles.reportText}>
+              Advanced cash flow (Operating / Investing / Financing) in future.
+            </Text>
           </View>
           <View style={styles.reportCard}>
-            <Text style={styles.reportTitle}>{texts.plannedLA}</Text>
-            <Text style={styles.reportText}>{texts.plannedLAText}</Text>
+            <Text style={styles.reportTitle}>Ledger Analysis</Text>
+            <Text style={styles.reportText}>
+              Graphs and trends for each major ledger over time.
+            </Text>
           </View>
         </View>
       </View>

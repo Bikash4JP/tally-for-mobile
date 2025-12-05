@@ -1,45 +1,36 @@
 // app/_layout.tsx
 import React from 'react';
-import { Stack } from 'expo-router';
-import {
-  SafeAreaProvider,
-  SafeAreaView,
-} from 'react-native-safe-area-context';
+import { Slot } from 'expo-router';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Platform, StatusBar, View } from 'react-native';
 
 import { DataProvider } from '../src/context/AppDataContext';
 import { SettingsProvider } from '../src/context/SettingsContext';
 
+const STATUS_BAR_HEIGHT =
+  Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      {/* Make sure content stays below status bar on all screens */}
-      <SafeAreaView
-        style={{ flex: 1, backgroundColor: '#000' }}
-        edges={['top', 'left', 'right']}
+      {/* Ye View pura app ko status bar ke neeche shift karega */}
+      <View
+        style={{
+          flex: 1,
+          paddingTop: STATUS_BAR_HEIGHT,
+          backgroundColor: '#000',
+        }}
       >
-        {/* Settings must wrap anything that uses useSettings() */}
+        {/* Yahan se neeche jitne bhi screens / tabs hain
+            sab SettingsProvider + DataProvider ke andar aayenge */}
         <SettingsProvider>
-          {/* App-wide data (ledgers, transactions, etc.) */}
           <DataProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              {/* Tab group */}
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-
-              {/* Entry detail */}
-              <Stack.Screen
-                name="entry/[id]"
-                options={{ title: 'Entry Detail' }}
-              />
-
-              {/* Ledger detail */}
-              <Stack.Screen
-                name="ledger/[id]"
-                options={{ title: 'Ledger' }}
-              />
-            </Stack>
+            {/* Expo Router ke saare routes yahan inject hote hain,
+               including (tabs)/_layout.tsx, entry/[id].tsx, ledger/[id].tsx */}
+            <Slot />
           </DataProvider>
         </SettingsProvider>
-      </SafeAreaView>
+      </View>
     </SafeAreaProvider>
   );
 }
