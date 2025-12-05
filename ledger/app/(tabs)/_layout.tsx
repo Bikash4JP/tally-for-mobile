@@ -1,43 +1,71 @@
 // app/(tabs)/_layout.tsx
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSettings } from '../../src/context/SettingsContext';
 
 const TAB_COLORS = {
-  bg: '#121212',
+  bg: '#000000',
+  border: '#333333',
   active: '#ffffff',
-  inactive: '#888888',
+  inactive: '#aaaaaa',
 };
 
+const TAB_LABELS = {
+  en: {
+    home: 'Home',
+    entries: 'Entries',
+    ledgers: 'Ledgers',
+    reports: 'Reports',
+    settings: 'Settings',
+  },
+  ja: {
+    home: 'ホーム',
+    entries: '仕訳',
+    ledgers: '元帳',
+    reports: 'レポート',
+    settings: '設定',
+  },
+} as const;
+
 export default function TabsLayout() {
+  const { settings } = useSettings();
+  const lang = settings.language === 'ja' ? 'ja' : 'en';
+  const labels = TAB_LABELS[lang];
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
           backgroundColor: TAB_COLORS.bg,
-          borderTopColor: '#000000',
+          borderTopColor: TAB_COLORS.border,
         },
         tabBarActiveTintColor: TAB_COLORS.active,
         tabBarInactiveTintColor: TAB_COLORS.inactive,
+        tabBarLabelStyle: {
+          fontSize: 11,
+        },
       }}
     >
+      {/* 👇 YEH Home tab hai ⇒ app/(tabs)/index.tsx open karega */}
       <Tabs.Screen
-        name="entries"
+        name="index"
         options={{
-          title: 'Entries',
+          title: labels.home,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="list-circle-outline" size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
 
+      {/* 👇 Entries tab ⇒ app/(tabs)/entries.tsx */}
       <Tabs.Screen
-        name="home"
+        name="entries"
         options={{
-          title: 'Home',
+          title: labels.entries,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+            <Ionicons name="list-outline" size={size} color={color} />
           ),
         }}
       />
@@ -45,9 +73,13 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="ledgers"
         options={{
-          title: 'Ledgers',
+          title: labels.ledgers,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book-outline" size={size} color={color} />
+            <MaterialCommunityIcons
+              name="file-table-outline"
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -55,9 +87,13 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="reports"
         options={{
-          title: 'Reports',
+          title: labels.reports,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="bar-chart-outline" size={size} color={color} />
+            <MaterialCommunityIcons
+              name="chart-box-outline"
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -65,7 +101,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
+          title: labels.settings,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),

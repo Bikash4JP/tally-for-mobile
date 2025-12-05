@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useData } from '../../src/context/AppDataContext';
+import { useSettings } from '../../src/context/SettingsContext';
 
 const COLORS = {
   primary: '#ac0c79',
@@ -19,14 +20,82 @@ const COLORS = {
   cardBorder: '#e0e0e0',
 };
 
+type Language = 'en' | 'ja';
+
+const UI_TEXT: Record<
+  Language,
+  {
+    appName: string;
+    tagline: string;
+    addEntry: string;
+    viewReports: string;
+    ledgersLabel: string;
+    ledgersHint: string;
+    entriesLabel: string;
+    entriesHint: string;
+    totalVolumeLabel: string;
+    totalVolumeHint: string;
+    quickNavTitle: string;
+    quickEntriesTitle: string;
+    quickEntriesText: string;
+    quickLedgersTitle: string;
+    quickLedgersText: string;
+    quickReportsTitle: string;
+    quickReportsText: string;
+  }
+> = {
+  en: {
+    appName: 'Budget Ledger',
+    tagline: 'Simple double-entry ledger for mobile.',
+    addEntry: '＋ Add Entry',
+    viewReports: 'View Reports',
+    ledgersLabel: 'Ledgers',
+    ledgersHint: 'Parties / banks / expenses',
+    entriesLabel: 'Entries',
+    entriesHint: 'All vouchers recorded',
+    totalVolumeLabel: 'Total Volume',
+    totalVolumeHint: 'Sum of all transaction amounts (Dr/Cr side)',
+    quickNavTitle: 'Quick Navigation',
+    quickEntriesTitle: 'Entries',
+    quickEntriesText: 'Add / review vouchers',
+    quickLedgersTitle: 'Ledgers',
+    quickLedgersText: 'Party / account balances',
+    quickReportsTitle: 'Reports',
+    quickReportsText: 'Trial balance and accounting summaries',
+  },
+  ja: {
+    appName: 'Budget Ledger',
+    tagline: 'モバイル向けのシンプルな複式簿記アプリ。',
+    addEntry: '＋ 仕訳を追加',
+    viewReports: 'レポートを見る',
+    ledgersLabel: '元帳',
+    ledgersHint: '取引先・銀行・経費など',
+    entriesLabel: '仕訳件数',
+    entriesHint: '登録されたすべての伝票',
+    totalVolumeLabel: '総取引金額',
+    totalVolumeHint: '全仕訳の金額合計（借方／貸方）',
+    quickNavTitle: 'クイックナビ',
+    quickEntriesTitle: '仕訳',
+    quickEntriesText: '伝票の登録・確認',
+    quickLedgersTitle: '元帳',
+    quickLedgersText: '取引先・勘定残高',
+    quickReportsTitle: 'レポート',
+    quickReportsText: '試算表や損益計算書など',
+  },
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const { ledgers, transactions } = useData();
+  const { settings } = useSettings();
+
+  const lang: Language = settings.language === 'ja' ? 'ja' : 'en';
+  const t = UI_TEXT[lang];
 
   const totalLedgers = ledgers.length;
   const totalEntries = transactions.length;
   const totalVolume = useMemo(
-    () => transactions.reduce((sum, t) => sum + t.amount, 0),
+    () => transactions.reduce((sum, trn) => sum + trn.amount, 0),
     [transactions],
   );
 
@@ -50,10 +119,8 @@ export default function HomeScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.headerBox}>
-        <Text style={styles.appName}>Budget Ledger</Text>
-        <Text style={styles.appTagline}>
-          Simple double-entry ledger for mobile.
-        </Text>
+        <Text style={styles.appName}>{t.appName}</Text>
+        <Text style={styles.appTagline}>{t.tagline}</Text>
 
         <View style={styles.headerButtonsRow}>
           <TouchableOpacity
@@ -61,14 +128,14 @@ export default function HomeScreen() {
             onPress={handleAddEntry}
             activeOpacity={0.7}
           >
-            <Text style={styles.headerPrimaryText}>＋ Add Entry</Text>
+            <Text style={styles.headerPrimaryText}>{t.addEntry}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.headerButton, styles.headerSecondaryButton]}
             onPress={handleGoReports}
             activeOpacity={0.7}
           >
-            <Text style={styles.headerSecondaryText}>View Reports</Text>
+            <Text style={styles.headerSecondaryText}>{t.viewReports}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -76,50 +143,48 @@ export default function HomeScreen() {
       {/* Stats row */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Ledgers</Text>
+          <Text style={styles.statLabel}>{t.ledgersLabel}</Text>
           <Text style={styles.statValue}>{totalLedgers}</Text>
-          <Text style={styles.statHint}>Parties / banks / expenses</Text>
+          <Text style={styles.statHint}>{t.ledgersHint}</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Entries</Text>
+          <Text style={styles.statLabel}>{t.entriesLabel}</Text>
           <Text style={styles.statValue}>{totalEntries}</Text>
-          <Text style={styles.statHint}>All vouchers recorded</Text>
+          <Text style={styles.statHint}>{t.entriesHint}</Text>
         </View>
       </View>
 
       <View style={styles.statsRow}>
         <View style={[styles.statCard, styles.statWideCard]}>
-          <Text style={styles.statLabel}>Total Volume</Text>
+          <Text style={styles.statLabel}>{t.totalVolumeLabel}</Text>
           <Text style={styles.statValue}>
             ¥{totalVolume.toLocaleString(undefined, {
               minimumFractionDigits: 2,
             })}
           </Text>
-          <Text style={styles.statHint}>
-            Sum of all transaction amounts (Dr/Cr side)
-          </Text>
+          <Text style={styles.statHint}>{t.totalVolumeHint}</Text>
         </View>
       </View>
 
       {/* Quick links */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Navigation</Text>
+        <Text style={styles.sectionTitle}>{t.quickNavTitle}</Text>
         <View style={styles.quickRow}>
           <TouchableOpacity
             style={styles.quickCard}
             onPress={handleGoEntries}
             activeOpacity={0.7}
           >
-            <Text style={styles.quickTitle}>Entries</Text>
-            <Text style={styles.quickText}>Add / review vouchers</Text>
+            <Text style={styles.quickTitle}>{t.quickEntriesTitle}</Text>
+            <Text style={styles.quickText}>{t.quickEntriesText}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickCard}
             onPress={handleGoLedgers}
             activeOpacity={0.7}
           >
-            <Text style={styles.quickTitle}>Ledgers</Text>
-            <Text style={styles.quickText}>Party / account balances</Text>
+            <Text style={styles.quickTitle}>{t.quickLedgersTitle}</Text>
+            <Text style={styles.quickText}>{t.quickLedgersText}</Text>
           </TouchableOpacity>
         </View>
 
@@ -129,10 +194,8 @@ export default function HomeScreen() {
             onPress={handleGoReports}
             activeOpacity={0.7}
           >
-            <Text style={styles.quickTitle}>Reports</Text>
-            <Text style={styles.quickText}>
-              Trial balance and accounting summaries
-            </Text>
+            <Text style={styles.quickTitle}>{t.quickReportsTitle}</Text>
+            <Text style={styles.quickText}>{t.quickReportsText}</Text>
           </TouchableOpacity>
         </View>
       </View>

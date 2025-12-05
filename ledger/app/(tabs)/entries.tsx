@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useData } from '../../src/context/AppDataContext';
+import { useSettings } from '../../src/context/SettingsContext';
 
 import type { Transaction } from '../../src/models/transaction';
 import type { Ledger } from '../../src/models/ledger';
@@ -24,15 +25,153 @@ const COLORS = {
 };
 
 type VoucherFilter = 'all' | 'Cash' | 'Journal' | 'Payment' | 'Receipt';
+type Language = 'en' | 'ja';
 
 type EnhancedTx = Transaction & {
   debitName: string;
   creditName: string;
 };
 
+// 🔤 UI text for EN / JA (sirf Entries screen ke liye)
+const UI_TEXT: Record<
+  Language,
+  {
+    header: string;
+    subtitle: string;
+    filtersTitle: string;
+    fromLabel: string;
+    toLabel: string;
+    searchLabel: string;
+    voucherLabel: string;
+    voucherNames: Record<VoucherFilter, string>;
+    emptyMessage: string;
+  }
+> = {
+  en: {
+    header: 'Entries',
+    subtitle: 'All vouchers in one place. Tap any row to see full details.',
+    filtersTitle: 'Filters',
+    fromLabel: 'From (YYYY-MM-DD)',
+    toLabel: 'To (YYYY-MM-DD)',
+    searchLabel: 'Ledger / Narration',
+    voucherLabel: 'Voucher Type',
+    voucherNames: {
+      all: 'All',
+      Cash: 'Cash',
+      Journal: 'Journal',
+      Payment: 'Payment',
+      Receipt: 'Receipt',
+    },
+    emptyMessage: 'No entries match the current filters.',
+  },
+  ja: {
+    header: '仕訳一覧',
+    subtitle: 'すべての伝票を一覧表示。タップすると詳細を確認できます。',
+    filtersTitle: '絞り込み',
+    fromLabel: '開始日 (YYYY-MM-DD)',
+    toLabel: '終了日 (YYYY-MM-DD)',
+    searchLabel: '元帳名 / 摘要',
+    voucherLabel: '伝票区分',
+    voucherNames: {
+      all: 'すべて',
+      Cash: '現金出納',
+      Journal: '振替',
+      Payment: '支払',
+      Receipt: '入金',
+    },
+    emptyMessage: '条件に一致する仕訳がありません。',
+  },
+};
+
+// 🧾 Standard ledger names → Japanese display
+// NOTE: key = ledger.name in AppDataContext seed
+const SYSTEM_LEDGER_JA: Record<string, string> = {
+  // P&L / Trading
+  'Sales A/c': '売上高',
+  Sales: '売上高',
+  'Sales Returns A/c': '売上返品',
+  'Purchases A/c': '仕入',
+  Purchases: '仕入',
+  'Purchase Returns A/c': '仕入返品',
+  'Opening Stock A/c': '期首商品棚卸高',
+  'Closing Stock A/c': '期末商品棚卸高',
+  'Wages A/c': '賃金',
+  'Carriage Inward A/c': '運搬費（仕入）',
+  'Fuel / Power A/c': '燃料・動力費',
+  'Rent Paid A/c': '支払家賃',
+  'Salaries A/c': '給与手当',
+  'Interest Paid A/c': '支払利息',
+  'Commission Paid A/c': '支払手数料',
+  'Discount Allowed A/c': '値引・割戻（支払）',
+  'Bad Debts A/c': '貸倒損失',
+  'Depreciation A/c': '減価償却費',
+  'Repairs A/c': '修繕費',
+  'Advertising A/c': '広告宣伝費',
+  'Rent Received A/c': '受取家賃',
+  'Interest Received A/c': '受取利息',
+  'Commission Received A/c': '受取手数料',
+  'Discount Received A/c': '仕入割引',
+
+  // Extra P&L examples
+  'Insurance A/c': '保険料',
+  'Electricity A/c': '電力料',
+  'Telephone / Internet A/c': '通信費',
+  'Travel Expenses A/c': '旅費交通費',
+  'Office Expenses A/c': '事務費',
+  'Printing & Stationery A/c': '印刷・文具費',
+  'Legal Fees A/c': '法務費用',
+  'Audit Fees A/c': '監査報酬',
+  'Bank Charges A/c': '支払手数料（銀行）',
+
+  // Balance sheet - Assets
+  'Land A/c': '土地',
+  'Building A/c': '建物',
+  'Plant & Machinery A/c': '機械装置',
+  'Furniture A/c': '備品・家具',
+  'Vehicles A/c': '車両運搬具',
+  'Cash in Hand': '現金',
+  'Cash in Hand A/c': '現金',
+  'Cash at Bank A/c': '当座預金',
+  'Bank A/c': '当座預金',
+  'Debtors A/c': '売掛金',
+  'Accounts Receivable A/c': '売掛金',
+  'Bills Receivable A/c': '受取手形',
+  'Prepaid Expenses A/c': '前払費用',
+  'Advance Payments A/c': '前払金',
+  'Stock / Inventory A/c': '商品',
+  'Investments A/c': '投資有価証券',
+  'Goodwill A/c': 'のれん',
+  'Patents A/c': '特許権',
+  'Copyrights A/c': '著作権',
+
+  // Balance sheet - Liabilities / Equity
+  'Capital A/c': '資本金',
+  'Bank Loan A/c': '借入金',
+  'Creditors A/c': '買掛金',
+  'Accounts Payable A/c': '買掛金',
+  'Bills Payable A/c': '支払手形',
+  'Outstanding Expenses A/c': '未払費用',
+  'Interest Due A/c': '未払利息',
+  'Drawings A/c': '引出金',
+  'Reserves A/c': '準備金',
+};
+
+// Helper: get display name based on language
+function getLedgerDisplayName(ledger: Ledger | undefined, lang: Language): string {
+  if (!ledger) return '';
+  if (lang === 'ja') {
+    return SYSTEM_LEDGER_JA[ledger.name] ?? ledger.name;
+  }
+  return ledger.name;
+}
+
 export default function EntriesScreen() {
   const { transactions, ledgers } = useData();
+  const { settings } = useSettings();
   const router = useRouter();
+
+  const lang: Language = settings.language === 'ja' ? 'ja' : 'en';
+  const texts = UI_TEXT[lang];
 
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState('');
@@ -54,8 +193,13 @@ export default function EntriesScreen() {
 
       return {
         ...t,
-        debitName: debit ? debit.name : t.debitLedgerId,
-        creditName: credit ? credit.name : t.creditLedgerId,
+        // 🔁 Standard ledger → JP, user-created ledger → as is
+        debitName: debit
+          ? getLedgerDisplayName(debit, lang)
+          : t.debitLedgerId,
+        creditName: credit
+          ? getLedgerDisplayName(credit, lang)
+          : t.creditLedgerId,
       };
     });
 
@@ -64,7 +208,7 @@ export default function EntriesScreen() {
       if (a.date === b.date) return b.id.localeCompare(a.id);
       return a.date < b.date ? 1 : -1;
     });
-  }, [transactions, ledgerMap]);
+  }, [transactions, ledgerMap, lang]);
 
   const filteredTx: EnhancedTx[] = useMemo(() => {
     return enhancedTx.filter((t) => {
@@ -88,7 +232,7 @@ export default function EntriesScreen() {
     });
   }, [enhancedTx, voucherFilter, fromDate, toDate, search]);
 
-  const renderVoucherChip = (value: VoucherFilter, label: string) => {
+  const renderVoucherChip = (value: VoucherFilter) => {
     const selected = voucherFilter === value;
     return (
       <TouchableOpacity
@@ -103,7 +247,7 @@ export default function EntriesScreen() {
             selected && styles.voucherChipTextSelected,
           ]}
         >
-          {label}
+          {texts.voucherNames[value]}
         </Text>
       </TouchableOpacity>
     );
@@ -122,10 +266,8 @@ export default function EntriesScreen() {
       {/* Header + Add button */}
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.title}>Entries</Text>
-          <Text style={styles.subtitle}>
-            All vouchers in one place. Tap any row to see full details.
-          </Text>
+          <Text style={styles.title}>{texts.header}</Text>
+          <Text style={styles.subtitle}>{texts.subtitle}</Text>
         </View>
         <TouchableOpacity style={styles.addButton} onPress={goToAddEntry}>
           <Text style={styles.addButtonText}>+ Add</Text>
@@ -134,11 +276,11 @@ export default function EntriesScreen() {
 
       {/* Filters */}
       <View style={styles.filterCard}>
-        <Text style={styles.filterTitle}>Filters</Text>
+        <Text style={styles.filterTitle}>{texts.filtersTitle}</Text>
 
         <View style={styles.filterRow}>
           <View style={styles.filterCol}>
-            <Text style={styles.filterLabel}>From (YYYY-MM-DD)</Text>
+            <Text style={styles.filterLabel}>{texts.fromLabel}</Text>
             <TextInput
               style={styles.filterInput}
               value={fromDate}
@@ -146,7 +288,7 @@ export default function EntriesScreen() {
             />
           </View>
           <View style={styles.filterCol}>
-            <Text style={styles.filterLabel}>To (YYYY-MM-DD)</Text>
+            <Text style={styles.filterLabel}>{texts.toLabel}</Text>
             <TextInput
               style={styles.filterInput}
               value={toDate}
@@ -156,7 +298,7 @@ export default function EntriesScreen() {
         </View>
 
         <Text style={[styles.filterLabel, { marginTop: 8 }]}>
-          Ledger / Narration
+          {texts.searchLabel}
         </Text>
         <TextInput
           style={styles.filterInput}
@@ -165,14 +307,14 @@ export default function EntriesScreen() {
         />
 
         <Text style={[styles.filterLabel, { marginTop: 8 }]}>
-          Voucher Type
+          {texts.voucherLabel}
         </Text>
         <View style={styles.voucherRow}>
-          {renderVoucherChip('all', 'All')}
-          {renderVoucherChip('Cash', 'Cash')}
-          {renderVoucherChip('Journal', 'Journal')}
-          {renderVoucherChip('Payment', 'Payment')}
-          {renderVoucherChip('Receipt', 'Receipt')}
+          {renderVoucherChip('all')}
+          {renderVoucherChip('Cash')}
+          {renderVoucherChip('Journal')}
+          {renderVoucherChip('Payment')}
+          {renderVoucherChip('Receipt')}
         </View>
       </View>
 
@@ -183,9 +325,7 @@ export default function EntriesScreen() {
       >
         {filteredTx.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>
-              No entries match the current filters.
-            </Text>
+            <Text style={styles.emptyText}>{texts.emptyMessage}</Text>
           </View>
         ) : (
           filteredTx.map((t) => (
@@ -205,9 +345,13 @@ export default function EntriesScreen() {
               </View>
 
               <View style={styles.entryRowMiddle}>
-                <Text style={styles.entryVoucher}>{t.voucherType}</Text>
+                <Text style={styles.entryVoucher}>
+                  {texts.voucherNames[t.voucherType as VoucherFilter] ??
+                    t.voucherType}
+                </Text>
                 <Text style={styles.entryPair} numberOfLines={1}>
-                  {t.debitName} <Text style={styles.entryArrow}>→</Text>{' '}
+                  {t.debitName}{' '}
+                  <Text style={styles.entryArrow}>→</Text>{' '}
                   {t.creditName}
                 </Text>
               </View>

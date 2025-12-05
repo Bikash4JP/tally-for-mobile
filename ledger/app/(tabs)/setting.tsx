@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useSettings } from '../../src/context/SettingsContext';
+import { useT } from '../../src/i18n/labels';
 
 const COLORS = {
   primary: '#ac0c79',
@@ -20,6 +21,7 @@ const COLORS = {
 
 export default function SettingsScreen() {
   const { settings, setLanguage } = useSettings();
+  const t = useT();
   const currentLang = settings.language;
 
   const renderLangChip = (value: 'en' | 'ja', label: string) => {
@@ -50,17 +52,17 @@ export default function SettingsScreen() {
     >
       {/* Header */}
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Settings</Text>
-        <Text style={styles.subtitle}>
-          App preferences, language, and (later) backup/sync.
-        </Text>
+        <Text style={styles.title}>{t('settings.title')}</Text>
+        <Text style={styles.subtitle}>{t('settings.subtitle')}</Text>
       </View>
 
       {/* Language section */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Language</Text>
+      <View className="card" style={styles.card}>
+        <Text style={styles.sectionTitle}>
+          {t('settings.language.title')}
+        </Text>
         <Text style={styles.sectionHint}>
-          Choose the language for the app interface.
+          {t('settings.language.hint')}
         </Text>
 
         <View style={styles.langRow}>
@@ -69,33 +71,33 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={styles.currentLangText}>
-          Current: {currentLang === 'en' ? 'English' : '日本語'}
+          {currentLang === 'en'
+            ? t('settings.language.current.en')
+            : t('settings.language.current.ja')}
         </Text>
         <Text style={styles.infoText}>
-          UI text will gradually follow this setting as we add translations.
+          {t('settings.language.info')}
         </Text>
       </View>
 
-      {/* Data & backup placeholder */}
+      {/* Data & backup section */}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Data & Backup</Text>
+        <Text style={styles.sectionTitle}>
+          {t('settings.data.title')}
+        </Text>
         <Text style={styles.sectionHint}>
-          Right now all data is stored locally on this device.
+          {t('settings.data.hint')}
         </Text>
-        <Text style={styles.infoText}>
-          In the future, you can connect cloud sync (PostgreSQL / Firebase, etc.)
-          so that ledgers are shared across devices.
-        </Text>
+        <Text style={styles.infoText}>{t('settings.data.info')}</Text>
       </View>
 
-      {/* About app */}
+      {/* About section */}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>About</Text>
+        <Text style={styles.sectionTitle}>
+          {t('settings.about.title')}
+        </Text>
         <Text style={styles.infoText}>
-          Tally-for-Mobile (ledger prototype){'\n'}
-          Built with React Native + Expo.{'\n'}
-          Double-entry, ledger-wise view, trial balance, P&L and balance sheet
-          are already working.
+          {t('settings.about.info')}
         </Text>
       </View>
     </ScrollView>
