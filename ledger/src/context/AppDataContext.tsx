@@ -38,8 +38,8 @@ type DataContextValue = {
 };
 
 const STORAGE_KEYS = {
-  ledgers: '@budgetapp_ledgers',
-  transactions: '@budgetapp_transactions',
+  ledgers: '@ledgerapp_ledgers',
+  transactions: '@ledgerapp_transactions',
 };
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -57,11 +57,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
           AsyncStorage.getItem(STORAGE_KEYS.transactions),
         ]);
 
-        if (ledgersJson) setLedgers(JSON.parse(ledgersJson));
-        else setLedgers(seedLedgers);
+        let base: Ledger[] = seedLedgers;
 
-        if (txJson) setTransactions(JSON.parse(txJson));
-        else setTransactions(seedTransactions);
+        if (ledgersJson) {
+          const stored: Ledger[] = JSON.parse(ledgersJson);
+
+          // 👉 Sirf user-created party ledgers ko preserve karo
+          const userParties = stored.filter((l) => l.isParty);
+
+          const merged: Ledger[] = [...base];
+          userParties.forEach((p) => {
+            const exists = merged.some(
+              (l) => l.name.toLowerCase() === p.name.toLowerCase(),
+            );
+            if (!exists) {
+              merged.push(p);
+            }
+          });
+
+          base = merged;
+        }
+
+        setLedgers(base);
+
+        if (txJson) {
+          setTransactions(JSON.parse(txJson));
+        } else {
+          setTransactions(seedTransactions);
+        }
       } catch (err) {
         console.warn('Failed to load data from storage', err);
         setLedgers(seedLedgers);
